@@ -13,8 +13,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize SQLx connection pool
     let pool = PgPoolOptions::new().max_connections(5).connect(&database_url).await?;
 
-    // slqx migrate build-script
-    sqlx::migrate!("./migrations").run(&pool).await?;
-
     Ok(())
 }
