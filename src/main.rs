@@ -7,8 +7,17 @@ use hyper::{
 
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{net::SocketAddr, sync::Arc};
+use serde::Deserialize;
 
 use std::collections::HashMap;
+
+#[derive(Deserialize)]
+struct NewQuestion {
+    body: String,
+    name: String,
+    email: String,
+    product_id: i32,
+}
 
 async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     match (req.method(), req.uri().path()) {
@@ -54,6 +63,20 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                 Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body("Invalid question_id path parameter".into())
+                    .unwrap())
+            }
+        }
+        (&hyper::Method::POST, "/api/v1/questions") => {
+            let body_bytes = hyper::body::to_bytes(req.into_body()).await?;
+            let body_str = String::from_utf8(body_bytes.to_vec())?;
+
+            let question_data: Result<NewQuestion, _> = serde_json::from_str(&body_str);
+            if let Ok(question_data) = question_data {
+                add_question(pool, question_data).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid request body".into())
                     .unwrap())
             }
         }
@@ -215,6 +238,40 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
     .map(|row| row.map(|r| serde_json::from_value(r.results.into()).unwrap_or(serde_json::Value::Array(vec![]))));
 
     process_database_response(row).await
+}
+
+async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO questions (product_id, body, date_written, asker_name, asker_email, reported, helpful)
+        VALUES ($1, $2, NOW(), $3, $4, false, 0)
+        RETURNING id;
+        "#,
+        question_data.product_id,
+        question_data.body,
+        question_data.name,
+        question_data.email
+    )
+    .fetch_one(&*pool)
+    .await;
+
+    match result {
+        Ok(row) => {
+            let response = serde_json::json!({ "question_id": row.id });
+            Ok(Response::builder()
+                .header("content-type", "application/json")
+                .status(StatusCode::CREATED)
+                .body(Body::from(response.to_string()))
+                .unwrap())
+        }
+        Err(e) => {
+            println!("Failed to add question: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to add question".into())
+                .unwrap())
+        }
+    }
 }
 
 #[tokio::main]
