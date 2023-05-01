@@ -13,25 +13,10 @@ use std::collections::HashMap;
 async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     match (req.method(), req.uri().path()) {
         (&hyper::Method::GET, "/api/v1/questions") => {
-            let query = req.uri().query();
-            let params: HashMap<String, String> = query.map(|q| {
-                q.split('&')
-                    .filter_map(|p| {
-                        let mut parts = p.split('=');
-                        let key = parts.next().unwrap_or("").to_string();
-                        let value = parts.next().unwrap_or("").to_string();
-                        if key.is_empty() || value.is_empty() {
-                            None
-                        } else {
-                            Some((key, value))
-                        }
-                    })
-                    .collect()
-            }).unwrap_or_default();
+            let params: HashMap<String, String> = parse_query_parameters(req.uri().query());
 
             if let Some(product_id) = params.get("product_id").and_then(|v| v.parse::<i32>().ok()) {
-                let page = params.get("page").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
-                let count = params.get("count").and_then(|v| v.parse::<i32>().ok()).unwrap_or(5);
+                let (page, count) = get_page_count(&params);
 
                 for key in params.keys() {
                     if key != "product_id" && key != "page" && key != "count" {
@@ -50,11 +35,56 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                     .unwrap())
             }
         }
+        (&hyper::Method::GET, path) if path.starts_with("/api/v1/answers/") => {
+            let question_id = path.strip_prefix("/api/v1/answers/").and_then(|v| v.parse::<i32>().ok());
+            if let Some(question_id) = question_id {
+                let params: HashMap<String, String> = parse_query_parameters(req.uri().query());
+                let (page, count) = get_page_count(&params);
+
+                for key in params.keys() {
+                    if key != "page" && key != "count" {
+                        return Ok(Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(format!("Unexpected query parameter: {}", key).into())
+                            .unwrap());
+                    }
+                }
+                // get_answers(pool, question_id, page, count).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid question_id path parameter".into())
+                    .unwrap())
+            }
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("Not found".into())
             .unwrap()),
     }
+}
+
+fn parse_query_parameters(query: Option<&str>) -> HashMap<String, String> {
+    query.map(|q| {
+        q.split('&')
+            .filter_map(|p| {
+                let mut parts = p.split('=');
+                let key = parts.next().unwrap_or("").to_string();
+                let value = parts.next().unwrap_or("").to_string();
+                if key.is_empty() || value.is_empty() {
+                    None
+                } else {
+                    Some((key, value))
+                }
+            })
+            .collect()
+    }).unwrap_or_default()
+}
+
+fn get_page_count(params: &HashMap<String, String>) -> (i32, i32) {
+    let page = params.get("page").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
+    let count = params.get("count").and_then(|v| v.parse::<i32>().ok()).unwrap_or(5);
+    (page, count)
 }
 
 async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
