@@ -13,5 +13,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize SQLx connection pool
     let pool = PgPoolOptions::new().max_connections(5).connect(&database_url).await?;
 
+    // Bind to a server:port
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+
+    // Start server
+    println!("Listening on http://{}", addr);
+
     Ok(())
 }
