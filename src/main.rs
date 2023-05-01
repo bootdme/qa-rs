@@ -4,13 +4,53 @@ use hyper::{
     service::{make_service_fn, service_fn},
     server::conn::AddrStream,
 };
+
 use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{net::SocketAddr, sync::Arc};
 
+use std::collections::HashMap;
+
 async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     match (req.method(), req.uri().path()) {
-        (&hyper::Method::GET, "/api/v1/questions") => get_questions(pool).await,
+        (&hyper::Method::GET, "/api/v1/questions") => {
+            let query = req.uri().query();
+            let params: HashMap<String, String> = query.map(|q| {
+                q.split('&')
+                    .filter_map(|p| {
+                        let mut parts = p.split('=');
+                        let key = parts.next().unwrap_or("").to_string();
+                        let value = parts.next().unwrap_or("").to_string();
+                        if key.is_empty() || value.is_empty() {
+                            None
+                        } else {
+                            Some((key, value))
+                        }
+                    })
+                    .collect()
+            }).unwrap_or_default();
+
+            if let Some(product_id) = params.get("product_id").and_then(|v| v.parse::<i32>().ok()) {
+                let page = params.get("page").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
+                let count = params.get("count").and_then(|v| v.parse::<i32>().ok()).unwrap_or(5);
+
+                for key in params.keys() {
+                    if key != "product_id" && key != "page" && key != "count" {
+                        return Ok(Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(format!("Unexpected query parameter: {}", key).into())
+                            .unwrap());
+                    }
+                }
+
+                get_questions(pool, product_id, page, count).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Missing product_id query parameter".into())
+                    .unwrap())
+            }
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("Not found".into())
@@ -18,7 +58,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
     }
 }
 
-async fn get_questions(pool: Arc<PgPool>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let rows = sqlx::query!(
         r#"
         SELECT product_id
