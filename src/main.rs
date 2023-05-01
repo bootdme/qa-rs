@@ -87,6 +87,33 @@ fn get_page_count(params: &HashMap<String, String>) -> (i32, i32) {
     (page, count)
 }
 
+async fn process_database_response(
+    result: Result<Option<serde_json::Value>, sqlx::Error>,
+) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let row = result.map_err(|e| {
+        println!("Failed to fetch data from the database: {:?}", e);
+        e
+    })?;
+
+    let response = if let Some(value) = row {
+        value
+    } else {
+        serde_json::Value::Array(vec![])
+    };
+
+    // Check for null value and return an empty array if response is null
+    let response = if response == serde_json::Value::Null {
+        serde_json::Value::Array(vec![])
+    } else {
+        response
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .body(Body::from(response.to_string()))
+        .unwrap())
+}
+
 async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let limit = (page * count) as i64;
 
@@ -146,28 +173,9 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
     )
     .fetch_optional(&*pool)
     .await
-    .map_err(|e| {
-        println!("Failed to fetch data from the database: {:?}", e);
-        e
-    })?;
+    .map(|row| row.map(|r| serde_json::from_value(r.results.into()).unwrap_or(serde_json::Value::Array(vec![]))));
 
-    let response = if let Some(row) = row {
-        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
-    } else {
-        serde_json::Value::Array(vec![])
-    };
-
-    // Check for null value and return an empty array if response is null
-    let response = if response == serde_json::Value::Null {
-        serde_json::Value::Array(vec![])
-    } else {
-        response
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .body(Body::from(response.to_string()))
-        .unwrap())
+    process_database_response(row).await
 }
 
 async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -204,29 +212,9 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
     )
     .fetch_optional(&*pool)
     .await
-    .map_err(|e| {
-        println!("Failed to fetch data from the database: {:?}", e);
-        e
-    })?;
+    .map(|row| row.map(|r| serde_json::from_value(r.results.into()).unwrap_or(serde_json::Value::Array(vec![]))));
 
-    let response = if let Some(row) = row {
-        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
-    } else {
-        serde_json::Value::Array(vec![])
-    };
-
-    // Check for null value and return an empty array if response is null
-    let response = if response == serde_json::Value::Null {
-        serde_json::Value::Array(vec![])
-    } else {
-        response
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .body(Body::from(response.to_string()))
-        .unwrap())
-
+    process_database_response(row).await
 }
 
 #[tokio::main]
