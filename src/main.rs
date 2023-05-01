@@ -49,7 +49,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                             .unwrap());
                     }
                 }
-                // get_answers(pool, question_id, page, count).await
+                get_answers(pool, question_id, page, count).await
             } else {
                 Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
@@ -168,6 +168,65 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
         .header("content-type", "application/json")
         .body(Body::from(response.to_string()))
         .unwrap())
+}
+
+async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let limit = (page * count) as i64;
+
+    let row = sqlx::query!(
+        r#"
+        SELECT
+            Json_agg(
+                Json_build_object(
+                    'answer_id',     a.id,
+                    'body',          a.body,
+                    'date',          a.date_written,
+                    'answerer_name', a.answerer_name,
+                    'helpfulness',   a.helpful,
+                    'photos', (
+                        SELECT COALESCE(Json_agg(d), '[]'::json)
+                        FROM (
+                            SELECT
+                                ap.id,
+                                ap.url
+                            FROM answer_photos ap
+                            WHERE ap.answer_id = a.id
+                        ) d
+                    ) 
+                )
+            ) AS results
+        FROM answers a
+        WHERE a.question_id = $1
+        LIMIT $2
+        "#,
+        question_id,
+        limit
+    )
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| {
+        println!("Failed to fetch data from the database: {:?}", e);
+        e
+    })?;
+
+    let response = if let Some(row) = row {
+        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+    } else {
+        serde_json::Value::Array(vec![])
+    };
+
+    // Check for null value and return an empty array if response is null
+    let response = if response == serde_json::Value::Null {
+        serde_json::Value::Array(vec![])
+    } else {
+        response
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .body(Body::from(response.to_string()))
+        .unwrap())
+
 }
 
 #[tokio::main]
