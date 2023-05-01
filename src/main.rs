@@ -1,14 +1,16 @@
 use dotenv::dotenv;
-use hyper::{Request, Response, Body, StatusCode, service::{make_service_fn, service_fn}, server::conn::AddrStream, Server};
+use hyper::{
+    Body, Request, Response, Server, StatusCode,
+    service::{make_service_fn, service_fn},
+    server::conn::AddrStream,
+};
 use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use tokio::sync::Mutex;
-
 use std::{net::SocketAddr, sync::Arc};
 
-async fn handle_request(pool: Arc<Mutex<PgPool>>, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     match (req.method(), req.uri().path()) {
-        (&hyper::Method::GET, "/questions") => get_questions(pool).await,
+        (&hyper::Method::GET, "/api/v1/questions") => get_questions(pool).await,
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("Not found".into())
@@ -16,8 +18,7 @@ async fn handle_request(pool: Arc<Mutex<PgPool>>, req: Request<Body>) -> Result<
     }
 }
 
-async fn get_questions(pool: Arc<Mutex<PgPool>>) -> Result<Response<Body>, hyper::Error> {
-    let pool = pool.lock().await;
+async fn get_questions(pool: Arc<PgPool>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let rows = sqlx::query!(
         r#"
         SELECT product_id
@@ -27,7 +28,10 @@ async fn get_questions(pool: Arc<Mutex<PgPool>>) -> Result<Response<Body>, hyper
     )
     .fetch_all(&*pool)
     .await
-    .expect("Failed to fetch data from the database");
+    .map_err(|e| {
+        println!("Failed to fetch data from the database: {:?}", e);
+        e
+    })?;
 
     let mut data = Vec::new();
     for row in rows {
@@ -46,35 +50,24 @@ async fn get_questions(pool: Arc<Mutex<PgPool>>) -> Result<Response<Body>, hyper
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Load environment variables from .env file
     dotenv().ok();
 
-    // Get database URL from environment variable
     let database_url = std::env::var("DATABASE_URL")?;
 
-    // Initialize SQLx connection pool
     let pool = PgPoolOptions::new().max_connections(5).connect(&database_url).await?;
-    let pool = Arc::new(Mutex::new(pool));
+    let pool = Arc::new(pool);
 
-    // Define the address and port the server will listen on
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    // Create a service function that handles incoming connections
     let make_svc = make_service_fn(move |_conn: &AddrStream| {
-        // Clone the connection pool for each incoming connection
         let pool = pool.clone();
-
-        // Create the service function that handles incoming requests
         async { Ok::<_, hyper::Error>(service_fn(move |req| handle_request(pool.clone(), req))) }
     });
 
-    // Create server instance with the specified address and service function
     let server = Server::bind(&addr).serve(make_svc);
 
-    // Start the server and print the listening address
     println!("Listening on http://{}", addr);
 
-    // Wait for the server to shut down
     server.await?;
 
     Ok(())
