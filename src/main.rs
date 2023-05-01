@@ -5,7 +5,6 @@ use hyper::{
     server::conn::AddrStream,
 };
 
-use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{net::SocketAddr, sync::Arc};
 
@@ -59,32 +58,85 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
 }
 
 async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-    let rows = sqlx::query!(
+    let limit = (page * count) as i64;
+
+    let row = sqlx::query!(
         r#"
-        SELECT product_id
-        FROM questions
-        LIMIT 5
-        "#
+        SELECT
+            Json_agg(
+                Json_build_object(
+                    'question_id',          q.id,
+                    'question_body',        q.body,
+                    'question_date',        q.date_written,
+                    'asker_name',           q.asker_name,
+                    'question_helpfulness', q.helpful,
+                    'reported',             q.reported,
+                    'answers', (
+                        SELECT COALESCE(a, '{}'::json)
+                        FROM (
+                            SELECT Json_object_agg(
+                                a.id,
+                                Json_build_object(
+                                    'id',            a.id,
+                                    'body',          a.body,
+                                    'date',          a.date_written,
+                                    'answerer_name', a.answerer_name,
+                                    'helpfulness',   a.helpful,
+                                    'photos', (
+                                        SELECT COALESCE(p, '[]'::json)
+                                        FROM (
+                                            SELECT
+                                                Json_agg(
+                                                    Json_build_object(
+                                                        'id',  ap.id,
+                                                        'url', ap.url
+                                                    )
+                                                ) AS p
+                                            FROM answer_photos AS ap
+                                            WHERE ap.answer_id = a.id
+                                        ) AS myPhotos
+                                    )
+                                )
+                            ) AS a
+                            FROM answers a
+                            WHERE a.question_id = q.id
+                        ) AS myAnswers
+                    )
+                )
+            ) AS results
+        FROM (
+            SELECT *
+            FROM questions
+            WHERE product_id = $1
+            LIMIT $2
+        ) AS q;
+        "#,
+        product_id,
+        limit
     )
-    .fetch_all(&*pool)
+    .fetch_optional(&*pool)
     .await
     .map_err(|e| {
         println!("Failed to fetch data from the database: {:?}", e);
         e
     })?;
 
-    let mut data = Vec::new();
-    for row in rows {
-        let item = json!({
-            "product_id": row.product_id,
-        });
-        data.push(item);
-    }
+    let response = if let Some(row) = row {
+        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+    } else {
+        serde_json::Value::Array(vec![])
+    };
 
-    let response = serde_json::to_string(&data).unwrap();
+    // Check for null value and return an empty array if response is null
+    let response = if response == serde_json::Value::Null {
+        serde_json::Value::Array(vec![])
+    } else {
+        response
+    };
+
     Ok(Response::builder()
         .header("content-type", "application/json")
-        .body(response.into())
+        .body(Body::from(response.to_string()))
         .unwrap())
 }
 
