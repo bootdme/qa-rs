@@ -19,6 +19,14 @@ struct NewQuestion {
     product_id: i32,
 }
 
+#[derive(Deserialize)]
+struct NewAnswer {
+    body: String,
+    name: String,
+    email: String,
+    photos: Vec<String>,
+}
+
 async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     match (req.method(), req.uri().path()) {
         (&hyper::Method::GET, "/api/v1/questions") => {
