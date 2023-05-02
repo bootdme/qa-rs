@@ -300,6 +300,55 @@ async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<R
     }
 }
 
+async fn add_answer(pool: Arc<PgPool>, question_id: i32, answer_data: NewAnswer) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO answers (question_id, body, date_written, answerer_name, answerer_email, reported, helpful)
+        VALUES ($1, $2, NOW(), $3, $4, false, 0)
+        RETURNING id;
+        "#,
+        question_id,
+        answer_data.body,
+        answer_data.name,
+        answer_data.email
+    )
+    .fetch_one(&*pool)
+    .await;
+
+    match result {
+        Ok(row) => {
+            let answer_id = row.id;
+
+            for url in answer_data.photos {
+                let _ = sqlx::query!(
+                    r#"
+                    INSERT INTO answer_photos (answer_id, url)
+                    VALUES ($1, $2);
+                    "#,
+                    answer_id,
+                    url
+                )
+                .execute(&*pool)
+                .await;
+            }
+
+            let response = serde_json::json!({ "answer_id": answer_id });
+            Ok(Response::builder()
+                .header("content-type", "application/json")
+                .status(StatusCode::CREATED)
+                .body(Body::from(response.to_string()))
+                .unwrap())
+        }
+        Err(e) => {
+            println!("Failed to add answer: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to add answer".into())
+                .unwrap())
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
