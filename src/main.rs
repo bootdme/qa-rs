@@ -116,6 +116,66 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                     .unwrap())
             }
         }
+        (&hyper::Method::PUT, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/helpful") => {
+            let question_id = path
+                .strip_prefix("/api/v1/questions/")
+                .and_then(|v| v.strip_suffix("/helpful"))
+                .and_then(|v| v.parse::<i32>().ok());
+
+            if let Some(question_id) = question_id {
+                update_question_helpful(pool, question_id).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid question_id path parameter".into())
+                    .unwrap())
+            }
+        }
+        (&hyper::Method::PUT, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/report") => {
+            let question_id = path
+                .strip_prefix("/api/v1/questions/")
+                .and_then(|v| v.strip_suffix("/report"))
+                .and_then(|v| v.parse::<i32>().ok());
+
+            if let Some(question_id) = question_id {
+                update_question_report(pool, question_id).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid question_id path parameter".into())
+                    .unwrap())
+            }
+        }
+        (&hyper::Method::PUT, path) if path.starts_with("/api/v1/answers/") && path.ends_with("/helpful") => {
+            let answer_id = path
+                .strip_prefix("/api/v1/answers/")
+                .and_then(|v| v.strip_suffix("/helpful"))
+                .and_then(|v| v.parse::<i32>().ok());
+
+            if let Some(answer_id) = answer_id {
+                update_answer_helpful(pool, answer_id).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid answer_id path parameter".into())
+                    .unwrap())
+            }
+        }
+        (&hyper::Method::PUT, path) if path.starts_with("/api/v1/answers/") && path.ends_with("/report") => {
+            let answer_id = path
+                .strip_prefix("/api/v1/answers/")
+                .and_then(|v| v.strip_suffix("/report"))
+                .and_then(|v| v.parse::<i32>().ok());
+
+            if let Some(answer_id) = answer_id {
+                update_answer_report(pool, answer_id).await
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid answer_id path parameter".into())
+                    .unwrap())
+            }
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("Not found".into())
@@ -144,33 +204,6 @@ fn get_page_count(params: &HashMap<String, String>) -> (i32, i32) {
     let page = params.get("page").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
     let count = params.get("count").and_then(|v| v.parse::<i32>().ok()).unwrap_or(5);
     (page, count)
-}
-
-async fn process_database_response(
-    result: Result<Option<serde_json::Value>, sqlx::Error>,
-) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-    let row = result.map_err(|e| {
-        println!("Failed to fetch data from the database: {:?}", e);
-        e
-    })?;
-
-    let response = if let Some(value) = row {
-        value
-    } else {
-        serde_json::Value::Array(vec![])
-    };
-
-    // Check for null value and return an empty array if response is null
-    let response = if response == serde_json::Value::Null {
-        serde_json::Value::Array(vec![])
-    } else {
-        response
-    };
-
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .body(Body::from(response.to_string()))
-        .unwrap())
 }
 
 async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -232,9 +265,28 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
     )
     .fetch_optional(&*pool)
     .await
-    .map(|row| row.map(|r| serde_json::from_value(r.results.into()).unwrap_or(serde_json::Value::Array(vec![]))));
+    .map_err(|e| {
+        println!("Failed to fetch data from the database: {:?}", e);
+        e
+    })?;
 
-    process_database_response(row).await
+    let response = if let Some(row) = row {
+        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+    } else {
+        serde_json::Value::Array(vec![])
+    };
+
+    // Check for null value and return an empty array if response is null
+    let response = if response == serde_json::Value::Null {
+        serde_json::Value::Array(vec![])
+    } else {
+        response
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .body(Body::from(response.to_string()))
+        .unwrap())
 }
 
 async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -271,9 +323,28 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
     )
     .fetch_optional(&*pool)
     .await
-    .map(|row| row.map(|r| serde_json::from_value(r.results.into()).unwrap_or(serde_json::Value::Array(vec![]))));
+    .map_err(|e| {
+        println!("Failed to fetch data from the database: {:?}", e);
+        e
+    })?;
 
-    process_database_response(row).await
+    let response = if let Some(row) = row {
+        serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+    } else {
+        serde_json::Value::Array(vec![])
+    };
+
+    // Check for null value and return an empty array if response is null
+    let response = if response == serde_json::Value::Null {
+        serde_json::Value::Array(vec![])
+    } else {
+        response
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "application/json")
+        .body(Body::from(response.to_string()))
+        .unwrap())
 }
 
 async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -354,6 +425,114 @@ async fn add_answer(pool: Arc<PgPool>, question_id: i32, answer_data: NewAnswer)
             Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to add answer".into())
+                .unwrap())
+        }
+    }
+}
+
+async fn update_question_helpful(pool: Arc<PgPool>, question_id: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE questions
+        SET helpful = helpful + 1
+        WHERE id = $1;
+        "#,
+        question_id
+    )
+    .execute(&*pool)
+    .await;
+
+    match result {
+        Ok(_) => Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body("".into())
+            .unwrap()),
+        Err(e) => {
+            println!("Failed to update question helpfulness: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to update question helpfulness".into())
+                .unwrap())
+        }
+    }
+}
+
+async fn update_question_report(pool: Arc<PgPool>, question_id: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE questions
+        SET reported = true
+        WHERE id = $1;
+        "#,
+        question_id
+    )
+    .execute(&*pool)
+    .await;
+
+    match result {
+        Ok(_) => Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body("".into())
+            .unwrap()),
+        Err(e) => {
+            println!("Failed to update question report: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to update question report".into())
+                .unwrap())
+        }
+    }
+}
+
+async fn update_answer_helpful(pool: Arc<PgPool>, answer_id: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE answers
+        SET helpful = helpful + 1
+        WHERE id = $1;
+        "#,
+        answer_id
+    )
+    .execute(&*pool)
+    .await;
+
+    match result {
+        Ok(_) => Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body("".into())
+            .unwrap()),
+        Err(e) => {
+            println!("Failed to update answer helpfulness: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to update answer helpfulness".into())
+                .unwrap())
+        }
+    }
+}
+
+async fn update_answer_report(pool: Arc<PgPool>, answer_id: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE answers
+        SET reported = true
+        WHERE id = $1;
+        "#,
+        answer_id
+    )
+    .execute(&*pool)
+    .await;
+
+    match result {
+        Ok(_) => Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body("".into())
+            .unwrap()),
+        Err(e) => {
+            println!("Failed to update answer report: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to update answer report".into())
                 .unwrap())
         }
     }
