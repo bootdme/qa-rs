@@ -80,6 +80,32 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                     .unwrap())
             }
         }
+        (&hyper::Method::POST, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/answers") => {
+            let question_id = path
+                .strip_prefix("/api/v1/questions/")
+                .and_then(|v| v.strip_suffix("/answers"))
+                .and_then(|v| v.parse::<i32>().ok());
+
+            if let Some(question_id) = question_id {
+                let body_bytes = hyper::body::to_bytes(req.into_body()).await?;
+                let body_str = String::from_utf8(body_bytes.to_vec())?;
+
+                let answer_data: Result<NewAnswer, _> = serde_json::from_str(&body_str);
+                if let Ok(answer_data) = answer_data {
+                    add_answer(pool, question_id, answer_data).await
+                } else {
+                    Ok(Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body("Invalid request body".into())
+                        .unwrap())
+                }
+            } else {
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body("Invalid question_id path parameter".into())
+                    .unwrap())
+            }
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body("Not found".into())
