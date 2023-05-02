@@ -52,9 +52,11 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                     .unwrap())
             }
         }
-        (&hyper::Method::GET, path) if path.starts_with("/api/v1/answers/") => {
-            let question_id = path.strip_prefix("/api/v1/answers/").and_then(|v| v.parse::<i32>().ok());
-            if let Some(question_id) = question_id {
+        (&hyper::Method::GET, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/answers") => {
+            let question_id_str = path.strip_prefix("/api/v1/questions/").unwrap();
+            let question_id_str = question_id_str.strip_suffix("/answers").unwrap();
+
+            if let Ok(question_id) = question_id_str.parse::<i32>() {
                 let params: HashMap<String, String> = parse_query_parameters(req.uri().query());
                 let (page, count) = get_page_count(&params);
 
