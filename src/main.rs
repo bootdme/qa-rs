@@ -212,46 +212,48 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
     let row = sqlx::query!(
         r#"
         SELECT
-            Json_agg(
-                Json_build_object(
-                    'question_id',          q.id,
-                    'question_body',        q.body,
-                    'question_date',        q.date_written,
-                    'asker_name',           q.asker_name,
-                    'question_helpfulness', q.helpful,
-                    'reported',             q.reported,
-                    'answers', (
-                        SELECT COALESCE(a, '{}'::json)
-                        FROM (
-                            SELECT Json_object_agg(
-                                a.id,
-                                Json_build_object(
-                                    'id',            a.id,
-                                    'body',          a.body,
-                                    'date',          a.date_written,
-                                    'answerer_name', a.answerer_name,
-                                    'helpfulness',   a.helpful,
-                                    'photos', (
-                                        SELECT COALESCE(p, '[]'::json)
-                                        FROM (
-                                            SELECT
-                                                Json_agg(
-                                                    Json_build_object(
-                                                        'id',  ap.id,
-                                                        'url', ap.url
-                                                    )
-                                                ) AS p
-                                            FROM answer_photos AS ap
-                                            WHERE ap.answer_id = a.id
-                                        ) AS myPhotos
+            COALESCE(
+                Json_agg(
+                    Json_build_object(
+                        'question_id',          q.id,
+                        'question_body',        q.body,
+                        'question_date',        q.date_written,
+                        'asker_name',           q.asker_name,
+                        'question_helpfulness', q.helpful,
+                        'reported',             q.reported,
+                        'answers', (
+                            SELECT COALESCE(a, '{}'::json)
+                            FROM (
+                                SELECT Json_object_agg(
+                                    a.id,
+                                    Json_build_object(
+                                        'id',            a.id,
+                                        'body',          a.body,
+                                        'date',          a.date_written,
+                                        'answerer_name', a.answerer_name,
+                                        'helpfulness',   a.helpful,
+                                        'photos', (
+                                            SELECT COALESCE(p, '[]'::json)
+                                            FROM (
+                                                SELECT
+                                                    Json_agg(
+                                                        Json_build_object(
+                                                            'id',  ap.id,
+                                                            'url', ap.url
+                                                        )
+                                                    ) AS p
+                                                FROM answer_photos AS ap
+                                                WHERE ap.answer_id = a.id
+                                            ) AS myPhotos
+                                        )
                                     )
-                                )
-                            ) AS a
-                            FROM answers a
-                            WHERE a.question_id = q.id
-                        ) AS myAnswers
+                                ) AS a
+                                FROM answers a
+                                WHERE a.question_id = q.id
+                            ) AS myAnswers
+                        )
                     )
-                )
+                ), '[]'::json
             ) AS results
         FROM (
             SELECT *
@@ -270,22 +272,19 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
         e
     })?;
 
-    let response = if let Some(row) = row {
+    let results = if let Some(row) = row {
         serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
     } else {
         serde_json::Value::Array(vec![])
     };
 
-    // Check for null value and return an empty array if response is null
-    let response = if response == serde_json::Value::Null {
-        serde_json::Value::Array(vec![])
-    } else {
-        response
-    };
+    let mut response = serde_json::Map::new();
+    response.insert("product_id".to_string(), serde_json::Value::from(product_id));
+    response.insert("results".to_string(), results);
 
     Ok(Response::builder()
         .header("content-type", "application/json")
-        .body(Body::from(response.to_string()))
+        .body(Body::from(serde_json::Value::Object(response).to_string()))
         .unwrap())
 }
 
@@ -295,24 +294,26 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
     let row = sqlx::query!(
         r#"
         SELECT
-            Json_agg(
-                Json_build_object(
-                    'answer_id',     a.id,
-                    'body',          a.body,
-                    'date',          a.date_written,
-                    'answerer_name', a.answerer_name,
-                    'helpfulness',   a.helpful,
-                    'photos', (
-                        SELECT COALESCE(Json_agg(d), '[]'::json)
-                        FROM (
-                            SELECT
+            COALESCE(
+                Json_agg(
+                    Json_build_object(
+                        'answer_id',     a.id,
+                        'body',          a.body,
+                        'date',          a.date_written,
+                        'answerer_name', a.answerer_name,
+                        'helpfulness',   a.helpful,
+                        'photos', (
+                            SELECT COALESCE(Json_agg(d), '[]'::json)
+                            FROM (
+                                SELECT
                                 ap.id,
                                 ap.url
-                            FROM answer_photos ap
-                            WHERE ap.answer_id = a.id
-                        ) d
-                    ) 
-                )
+                                FROM answer_photos ap
+                                WHERE ap.answer_id = a.id
+                                ) d
+                            ) 
+                        )
+                    ), '[]'::json 
             ) AS results
         FROM answers a
         WHERE a.question_id = $1
@@ -328,22 +329,21 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
         e
     })?;
 
-    let response = if let Some(row) = row {
+    let results = if let Some(row) = row {
         serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
     } else {
         serde_json::Value::Array(vec![])
     };
 
-    // Check for null value and return an empty array if response is null
-    let response = if response == serde_json::Value::Null {
-        serde_json::Value::Array(vec![])
-    } else {
-        response
-    };
+    let mut response = serde_json::Map::new();
+    response.insert("question_id".to_string(), serde_json::Value::from(question_id));
+    response.insert("page".to_string(), serde_json::Value::from(page));
+    response.insert("count".to_string(), serde_json::Value::from(count));
+    response.insert("results".to_string(), results);
 
     Ok(Response::builder()
         .header("content-type", "application/json")
-        .body(Body::from(response.to_string()))
+        .body(Body::from(serde_json::Value::Object(response).to_string()))
         .unwrap())
 }
 
