@@ -174,6 +174,14 @@ fn get_page_count(params: &HashMap<String, String>) -> (i32, i32) {
     (page, count)
 }
 
+fn create_success_response(status: StatusCode, body: serde_json::Value) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(Response::builder()
+       .status(status)
+       .header("content-type", "application/json")
+       .body(Body::from(body.to_string()))
+       .unwrap())
+}
+
 fn create_error_response(status: StatusCode, message: String) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     Ok(Response::builder()
        .status(status)
@@ -257,10 +265,7 @@ async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32
     response.insert("product_id".to_string(), serde_json::Value::from(product_id));
     response.insert("results".to_string(), results);
 
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .body(Body::from(serde_json::Value::Object(response).to_string()))
-        .unwrap())
+    create_success_response(StatusCode::OK, serde_json::Value::Object(response))
 }
 
 async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -316,10 +321,7 @@ async fn get_answers(pool: Arc<PgPool>, question_id: i32, page: i32, count: i32)
     response.insert("count".to_string(), serde_json::Value::from(count));
     response.insert("results".to_string(), results);
 
-    Ok(Response::builder()
-        .header("content-type", "application/json")
-        .body(Body::from(serde_json::Value::Object(response).to_string()))
-        .unwrap())
+    create_success_response(StatusCode::OK, serde_json::Value::Object(response))
 }
 
 async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -340,11 +342,7 @@ async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<R
     match result {
         Ok(row) => {
             let response = serde_json::json!({ "question_id": row.id });
-            Ok(Response::builder()
-                .header("content-type", "application/json")
-                .status(StatusCode::CREATED)
-                .body(Body::from(response.to_string()))
-                .unwrap())
+            create_success_response(StatusCode::CREATED, response)
         }
         Err(e) => {
             println!("Failed to add question: {:?}", e);
@@ -386,11 +384,7 @@ async fn add_answer(pool: Arc<PgPool>, question_id: i32, answer_data: NewAnswer)
             }
 
             let response = serde_json::json!({ "answer_id": answer_id });
-            Ok(Response::builder()
-                .header("content-type", "application/json")
-                .status(StatusCode::CREATED)
-                .body(Body::from(response.to_string()))
-                .unwrap())
+            create_success_response(StatusCode::CREATED, response)
         }
         Err(e) => {
             println!("Failed to add answer: {:?}", e);
@@ -412,10 +406,7 @@ async fn update_question_helpful(pool: Arc<PgPool>, question_id: i32) -> Result<
     .await;
 
     match result {
-        Ok(_) => Ok(Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body("".into())
-            .unwrap()),
+        Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update question helpfulness: {:?}", e);
             return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question helpfulness".into());
@@ -436,10 +427,7 @@ async fn update_question_report(pool: Arc<PgPool>, question_id: i32) -> Result<R
     .await;
 
     match result {
-        Ok(_) => Ok(Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body("".into())
-            .unwrap()),
+        Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update question report: {:?}", e);
             return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question report".into());
@@ -460,10 +448,7 @@ async fn update_answer_helpful(pool: Arc<PgPool>, answer_id: i32) -> Result<Resp
     .await;
 
     match result {
-        Ok(_) => Ok(Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body("".into())
-            .unwrap()),
+        Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update answer helpfulness: {:?}", e);
             return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer helpfulness".into());
@@ -484,10 +469,7 @@ async fn update_answer_report(pool: Arc<PgPool>, answer_id: i32) -> Result<Respo
     .await;
 
     match result {
-        Ok(_) => Ok(Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body("".into())
-            .unwrap()),
+        Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update answer report: {:?}", e);
             return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer report".into());
