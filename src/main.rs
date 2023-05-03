@@ -37,19 +37,16 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
 
                 for key in params.keys() {
                     if key != "product_id" && key != "page" && key != "count" {
-                        return Ok(Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(format!("Unexpected query parameter: {}", key).into())
-                            .unwrap());
+                        return create_error_response(StatusCode::BAD_REQUEST, format!("Unexpected query parameter: {}", key));
                     }
                 }
 
                 get_questions(pool, product_id, page, count).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Missing product_id query parameter".into())
-                    .unwrap())
+                if !params.contains_key("product_id") {
+                    return create_error_response(StatusCode::BAD_REQUEST, "Missing product_id query parameter".to_string())
+                }
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid product_id query parameter".to_string());
             }
         }
         (&hyper::Method::GET, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/answers") => {
@@ -62,18 +59,13 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
 
                 for key in params.keys() {
                     if key != "page" && key != "count" {
-                        return Ok(Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(format!("Unexpected query parameter: {}", key).into())
-                            .unwrap());
+                        return create_error_response(StatusCode::BAD_REQUEST, format!("Unexpected query parameter: {}", key));
                     }
                 }
+
                 get_answers(pool, question_id, page, count).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid question_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid question_id path parameter".into());
             }
         }
         (&hyper::Method::POST, "/api/v1/questions") => {
@@ -84,10 +76,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
             if let Ok(question_data) = question_data {
                 add_question(pool, question_data).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid request body".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid request body".into());
             }
         }
         (&hyper::Method::POST, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/answers") => {
@@ -104,16 +93,10 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
                 if let Ok(answer_data) = answer_data {
                     add_answer(pool, question_id, answer_data).await
                 } else {
-                    Ok(Response::builder()
-                        .status(StatusCode::BAD_REQUEST)
-                        .body("Invalid request body".into())
-                        .unwrap())
+                    return create_error_response(StatusCode::BAD_REQUEST, "Invalid request body".into());
                 }
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid question_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid question_id path parameter".into());
             }
         }
         (&hyper::Method::PUT, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/helpful") => {
@@ -125,10 +108,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
             if let Some(question_id) = question_id {
                 update_question_helpful(pool, question_id).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid question_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid question_id path parameter".into());
             }
         }
         (&hyper::Method::PUT, path) if path.starts_with("/api/v1/questions/") && path.ends_with("/report") => {
@@ -140,10 +120,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
             if let Some(question_id) = question_id {
                 update_question_report(pool, question_id).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid question_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid question_id path parameter".into());
             }
         }
         (&hyper::Method::PUT, path) if path.starts_with("/api/v1/answers/") && path.ends_with("/helpful") => {
@@ -155,10 +132,7 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
             if let Some(answer_id) = answer_id {
                 update_answer_helpful(pool, answer_id).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid answer_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid answer_id path parameter".into());
             }
         }
         (&hyper::Method::PUT, path) if path.starts_with("/api/v1/answers/") && path.ends_with("/report") => {
@@ -170,16 +144,10 @@ async fn handle_request(pool: Arc<PgPool>, req: Request<Body>) -> Result<Respons
             if let Some(answer_id) = answer_id {
                 update_answer_report(pool, answer_id).await
             } else {
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Invalid answer_id path parameter".into())
-                    .unwrap())
+                return create_error_response(StatusCode::BAD_REQUEST, "Invalid answer_id path parameter".into());
             }
         }
-        _ => Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body("Not found".into())
-            .unwrap()),
+        _ => return create_error_response(StatusCode::NOT_FOUND, "Path not found".into()),
     }
 }
 
@@ -204,6 +172,13 @@ fn get_page_count(params: &HashMap<String, String>) -> (i32, i32) {
     let page = params.get("page").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
     let count = params.get("count").and_then(|v| v.parse::<i32>().ok()).unwrap_or(5);
     (page, count)
+}
+
+fn create_error_response(status: StatusCode, message: String) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(Response::builder()
+       .status(status)
+       .body(message.into())
+       .unwrap())
 }
 
 async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
@@ -373,10 +348,7 @@ async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Result<R
         }
         Err(e) => {
             println!("Failed to add question: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to add question".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add question".into());
         }
     }
 }
@@ -422,10 +394,7 @@ async fn add_answer(pool: Arc<PgPool>, question_id: i32, answer_data: NewAnswer)
         }
         Err(e) => {
             println!("Failed to add answer: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to add answer".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add answer".into());
         }
     }
 }
@@ -449,10 +418,7 @@ async fn update_question_helpful(pool: Arc<PgPool>, question_id: i32) -> Result<
             .unwrap()),
         Err(e) => {
             println!("Failed to update question helpfulness: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to update question helpfulness".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question helpfulness".into());
         }
     }
 }
@@ -476,10 +442,7 @@ async fn update_question_report(pool: Arc<PgPool>, question_id: i32) -> Result<R
             .unwrap()),
         Err(e) => {
             println!("Failed to update question report: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to update question report".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question report".into());
         }
     }
 }
@@ -503,10 +466,7 @@ async fn update_answer_helpful(pool: Arc<PgPool>, answer_id: i32) -> Result<Resp
             .unwrap()),
         Err(e) => {
             println!("Failed to update answer helpfulness: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to update answer helpfulness".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer helpfulness".into());
         }
     }
 }
@@ -530,10 +490,7 @@ async fn update_answer_report(pool: Arc<PgPool>, answer_id: i32) -> Result<Respo
             .unwrap()),
         Err(e) => {
             println!("Failed to update answer report: {:?}", e);
-            Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to update answer report".into())
-                .unwrap())
+            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer report".into());
         }
     }
 }
