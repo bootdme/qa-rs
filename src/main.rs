@@ -1,6 +1,7 @@
 mod handlers;
 mod models;
 mod utils;
+mod routes;
 
 use dotenv::dotenv;
 use hyper::{ 
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let make_svc = make_service_fn(move |_conn: &AddrStream| {
         let pool = pool.clone();
-        async { Ok::<_, hyper::Error>(service_fn(move |req| handlers::handle_request(pool.clone(), req))) }
+        async { Ok::<_, hyper::Error>(service_fn(move |req| routes::handle_request(pool.clone(), req))) }
     });
 
     let server = Server::bind(&addr).serve(make_svc);
