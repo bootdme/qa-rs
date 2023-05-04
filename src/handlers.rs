@@ -163,7 +163,7 @@ pub async fn add_question(pool: Arc<PgPool>, question_data: NewQuestion) -> Resu
         }
         Err(e) => {
             println!("Failed to add question: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add question".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add question".into())
         }
     }
 }
@@ -205,7 +205,7 @@ pub async fn add_answer(pool: Arc<PgPool>, question_id: i32, answer_data: NewAns
         }
         Err(e) => {
             println!("Failed to add answer: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add answer".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to add answer".into())
         }
     }
 }
@@ -226,7 +226,7 @@ pub async fn update_question_helpful(pool: Arc<PgPool>, question_id: i32) -> Res
         Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update question helpfulness: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question helpfulness".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question helpfulness".into())
         }
     }
 }
@@ -247,7 +247,7 @@ pub async fn update_question_report(pool: Arc<PgPool>, question_id: i32) -> Resu
         Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update question report: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question report".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update question report".into())
         }
     }
 }
@@ -268,7 +268,7 @@ pub async fn update_answer_helpful(pool: Arc<PgPool>, answer_id: i32) -> Result<
         Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update answer helpfulness: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer helpfulness".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer helpfulness".into())
         }
     }
 }
@@ -289,7 +289,7 @@ pub async fn update_answer_report(pool: Arc<PgPool>, answer_id: i32) -> Result<R
         Ok(_) => create_success_response(StatusCode::NO_CONTENT, serde_json::Value::Null),
         Err(e) => {
             println!("Failed to update answer report: {:?}", e);
-            return create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer report".into());
+            create_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update answer report".into())
         }
     }
 }
