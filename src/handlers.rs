@@ -6,6 +6,23 @@ use hyper::{Body, Response, StatusCode};
 use sqlx::PgPool;
 use std::sync::Arc;
 
+/// Retrieves questions and their related information for a specific product.
+///
+/// This function queries the database for questions and their corresponding answers and photos
+/// based on the given product_id, page, and count.
+///
+/// # Arguments
+///
+/// * `pool` - An Arc-wrapped connection pool for database access.
+/// * `product_id` - The product ID for which to retrieve questions.
+/// * `page` - The page number for pagination.
+/// * `count` - The number of questions to retrieve per page.
+///
+/// # Returns
+///
+/// Returns a `Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>>`:
+/// * `Ok(Response<Body>)` - A successful response with questions, answers, and photos in JSON format.
+/// * `Err(Box<dyn std::error::Error + Send + Sync>)` - An error if any issues occurred during the database query or response generation.
 pub async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count: i32) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let limit = (page * count) as i64;
 
@@ -72,12 +89,14 @@ pub async fn get_questions(pool: Arc<PgPool>, product_id: i32, page: i32, count:
         e
     })?;
 
+    // Deserialize the JSON result of the query
     let results = if let Some(row) = row {
         serde_json::from_value(row.results.into()).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
     } else {
         serde_json::Value::Array(vec![])
     };
 
+    // Create a JSON response object with the product_id and results
     let mut response = serde_json::Map::new();
     response.insert("product_id".to_string(), serde_json::Value::from(product_id));
     response.insert("results".to_string(), results);
