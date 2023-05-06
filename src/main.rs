@@ -31,7 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let database_url = std::env::var("DATABASE_URL")?;
 
-    let pool = PgPoolOptions::new().max_connections(5).connect(&database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(1000)
+        .idle_timeout(std::time::Duration::from_secs(30))
+        .connect(&database_url)
+        .await?;
 
     // Wrap the connection pool in an Arc for shared ownership and thread safety
     let pool = Arc::new(pool);
