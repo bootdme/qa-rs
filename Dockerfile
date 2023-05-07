@@ -1,7 +1,6 @@
 FROM rust:latest as build
 WORKDIR /usr/src/qa-rs
 COPY . .
-COPY .env .env
 RUN cargo build --release
 
 FROM debian:buster-slim
