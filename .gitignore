@@ -1,8 +1,4 @@
 /target
-
-# CSV
-csv/
-
+/csv
 .env
-
 .DS_Store

@@ -1,4 +1,5 @@
-FROM rust:latest as build
+FROM rust:latest as builder
+
 WORKDIR /usr/src/qa-rs
 COPY . .
 RUN cargo build --release
