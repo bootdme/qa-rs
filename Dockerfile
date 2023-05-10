@@ -1,4 +1,4 @@
-FROM rust:latest as builder
+FROM rust:latest as build
 
 WORKDIR /usr/src/qa-rs
 COPY . .

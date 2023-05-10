@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qa-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: qa-api
+  template:
+    metadata:
+      labels:
+        app: qa-api
+    spec:
+      containers:
+        - name: qa-ecr
+          image: 860058928307.dkr.ecr.us-west-2.amazonaws.com/qa-ecr
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-key
+                  key: database_url
